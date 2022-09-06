@@ -407,50 +407,18 @@ class runCase(OP):
 if __name__ == "__main__":  
     start=time.time()
 
-    #-------------Testing python script--------------#
-    # import read_commonDict
-    # # import globalvar
-    # # import canteraSim
-    # import interpToMeshgrid
-    # import multiProcessing_canteraSim
-    # import PDF_Sim_multiProcessing
-    # import assemble
-    # cbDict = read_commonDict.read_commonDict("commonDict.txt")
-
-    # # global_cbDict=globalvar.update_dict(cbDict)
-
-    # # globalvar._init()
-    # # for key,value in cbDict.items():
-    # #     # print("\nKey: " + key)
-    # #     # print("Value: " + str(value))
-    # #     globalvar.set_value(key,value)
-
-    # # for key in cbDict.items():
-    # #     # print("\nKey: " + key)
-    # #     # print("Value: " + str(value))
-    # #     globalvar.get_value(key)
-    # # globalize_cbDict.load_global_dict(cbDict)
-    # # print (cbDict['solIdx'])
-    # # print (type(cbDict))
-
-    # # canteraSim.canteraSim(cbDict)
-
-    # solFln=multiProcessing_canteraSim.canteraSim(cbDict)
-    # tarPath=interpToMeshgrid.interpLamFlame(cbDict,solFln)
-
-    # # tarPath = './canteraData/interpData.tar'
-    # start_pdf=time.time()
-    # PDF_Sim_multiProcessing.PDF_Intergrate(cbDict,tarPath)
-    # end_pdf=time.time()
-    # print('PDF Running time: %s Seconds'%(end_pdf-start_pdf))
-
-    # tarPath = './canteraData/pdfData.tar'
-    # assemble.assemble(cbDict,tarPath)
-
-
-
-
     #---------------- WorkFlow ----------------#
+
+    #************** Case SetUp **************#
+    # Main jet velocity of Sandia Flame C/D/E/F
+    # Ubulk = [29.7,49.6,74.4,99.2]
+    # caseIndex = ["Sandia_Flame_C","Sandia_Flame_D","Sandia_Flame_E","Sandia_Flame_F"]
+    Ubulk = [29.7,49.6]  # to-be-changed parameter list
+    caseIndex = ["Sandia_Flame_C","Sandia_Flame_D"]  #case names
+    n_proc_mpirun = 7  #processors per case
+    artifact_case=upload_artifact("SandiaFlame_RANS/")  #upload case folder
+    parallel_cases=True   #if run CFD cases simultaneously
+    #************* End Case SetUp ************#
 
     wf = Workflow(name="flare")
 
@@ -502,15 +470,6 @@ if __name__ == "__main__":
                         key="assemble_Flare")
     wf.add(assemble_Flare)
 
-    #************** Case SetUp **************#
-    # Main jet velocity of Sandia Flame C/D/E/F
-    # Ubulk = [29.7,49.6,74.4,99.2]
-    # caseIndex = ["Sandia_Flame_C","Sandia_Flame_D","Sandia_Flame_E","Sandia_Flame_F"]
-    Ubulk = [29.7,49.6]
-    caseIndex = ["Sandia_Flame_C","Sandia_Flame_D"]
-    n_proc_mpirun = 7
-    artifact_case=upload_artifact("SandiaFlame_RANS/")
-    #************* End Case SetUp ************#
 
     ############### parallel computation for cases ###################
     runcase=PythonOPTemplate(runCase,
@@ -518,78 +477,78 @@ if __name__ == "__main__":
             image_pull_policy="IfNotPresent",OutputArtifact='zip_path',
             slices=Slices("{{item}}",input_parameter=["Ubulk","caseIndex"],
                     output_artifact=["zip_path"]) )
-    runCase=Step(name="runcase",template=runcase,
+    runCase=Step(name="runcase",template=runcase,when="%s == True" % (parallel_cases),
                 artifacts={"case_path": artifact_case,
                     "flareTab_path":assemble_Flare.outputs.artifacts["flareTabPath"]},
                 parameters={"Ubulk":Ubulk,"n_proc_mpirun":n_proc_mpirun,"caseIndex":caseIndex},
                 with_sequence=argo_sequence(len(Ubulk)),key="runcase")
     wf.add(runCase)
 
-    # ############### serial computation for cases ###################
-    # for caseIndex in range(len(Ubulk)):
-    #     artifact_flareTab=upload_artifact("flare.tbl")
-    #     artifact_case=upload_artifact("SandiaFlame_RANS/")
-    #     importcase=PythonOPTemplate(importCase,
-    #             image="wangdongchina/pythoncantera:v0.4",command=["ipython"],
-    #             image_pull_policy="IfNotPresent",OutputArtifact='zip_path')
+    ############### serial computation for cases ###################
+    for caseIndex in range(len(Ubulk)):
+        artifact_flareTab=upload_artifact("flare.tbl")
+        artifact_case=upload_artifact("SandiaFlame_RANS/")
+        importcase=PythonOPTemplate(importCase,
+                image="wangdongchina/pythoncantera:v0.4",command=["ipython"],
+                image_pull_policy="IfNotPresent",OutputArtifact='zip_path')
 
-    #     blockmesh=ShellOPTemplate(
-    #         image="wangdongchina/pythoncantera:v0.4",
-    #         command = ["bash"],
-    #         script="ls -R /tmp && cd /tmp/case_{{inputs.parameters.caseIndex}}.tar/tmp && ls -R \
-    #             && unzip case_{{inputs.parameters.caseIndex}}.zip \
-    #             && cd ./tmp/inputs/artifacts/case_path/SandiaFlame_RANS \
-    #             && source $HOME/OpenFOAM/OpenFOAM-7/etc/bashrc \
-    #             && blockMesh && cd .. \
-    #             && tar -cvf blockMesh_{{inputs.parameters.caseIndex}}.tar SandiaFlame_RANS \
-    #             && mv ./blockMesh_{{inputs.parameters.caseIndex}}.tar /tmp"
-    #         )
-    #     blockmesh.inputs.parameters={"caseIndex":InputParameter()}
-    #     blockmesh.inputs.artifacts= \
-    #         {"SandiaFlame_RANS":InputArtifact(path='/tmp/case_'+str(caseIndex)+'.tar')}
-    #     blockmesh.outputs.artifacts={"blockMeshFile": 
-    #         OutputArtifact(path="/tmp/blockMesh_"+str(caseIndex)+".tar")}
+        blockmesh=ShellOPTemplate(
+            image="wangdongchina/pythoncantera:v0.4",
+            command = ["bash"],
+            script="ls -R /tmp && cd /tmp/case_{{inputs.parameters.caseIndex}}.tar/tmp && ls -R \
+                && unzip case_{{inputs.parameters.caseIndex}}.zip \
+                && cd ./tmp/inputs/artifacts/case_path/SandiaFlame_RANS \
+                && source $HOME/OpenFOAM/OpenFOAM-7/etc/bashrc \
+                && blockMesh && cd .. \
+                && tar -cvf blockMesh_{{inputs.parameters.caseIndex}}.tar SandiaFlame_RANS \
+                && mv ./blockMesh_{{inputs.parameters.caseIndex}}.tar /tmp"
+            )
+        blockmesh.inputs.parameters={"caseIndex":InputParameter()}
+        blockmesh.inputs.artifacts= \
+            {"SandiaFlame_RANS":InputArtifact(path='/tmp/case_'+str(caseIndex)+'.tar')}
+        blockmesh.outputs.artifacts={"blockMeshFile": 
+            OutputArtifact(path="/tmp/blockMesh_"+str(caseIndex)+".tar")}
 
-    #     decomposepar=ShellOPTemplate(
-    #         image="wangdongchina/pythoncantera:v0.4",
-    #         command = ["bash"],
-    #         script="cd /tmp && tar -xvf blockMesh_{{inputs.parameters.caseIndex}}.tar && cd SandiaFlame_RANS/ \
-    #             && source $HOME/OpenFOAM/OpenFOAM-7/etc/bashrc \
-    #             && decomposePar && cd .. && tar -cvf decomposePar_{{inputs.parameters.caseIndex}}.tar SandiaFlame_RANS"
-    #         )
-    #     decomposepar.inputs.parameters={"caseIndex":InputParameter()}
-    #     decomposepar.inputs.artifacts={"blockMeshFile":InputArtifact(path="/tmp/blockMesh_"+str(caseIndex)+".tar")}
-    #     decomposepar.outputs.artifacts={"decomposeParFile":OutputArtifact(path="/tmp/decomposePar_"+str(caseIndex)+".tar")}
+        decomposepar=ShellOPTemplate(
+            image="wangdongchina/pythoncantera:v0.4",
+            command = ["bash"],
+            script="cd /tmp && tar -xvf blockMesh_{{inputs.parameters.caseIndex}}.tar && cd SandiaFlame_RANS/ \
+                && source $HOME/OpenFOAM/OpenFOAM-7/etc/bashrc \
+                && decomposePar && cd .. && tar -cvf decomposePar_{{inputs.parameters.caseIndex}}.tar SandiaFlame_RANS"
+            )
+        decomposepar.inputs.parameters={"caseIndex":InputParameter()}
+        decomposepar.inputs.artifacts={"blockMeshFile":InputArtifact(path="/tmp/blockMesh_"+str(caseIndex)+".tar")}
+        decomposepar.outputs.artifacts={"decomposeParFile":OutputArtifact(path="/tmp/decomposePar_"+str(caseIndex)+".tar")}
 
-    #     mpirun=ShellOPTemplate(
-    #         image="wangdongchina/pythoncantera:v0.4",
-    #         command = ["bash"],requests={"cpu": 7},
-    #         script="cd /tmp && tar -xvf decomposePar_{{inputs.parameters.caseIndex}}.tar && cd SandiaFlame_RANS/ \
-    #             && source $HOME/OpenFOAM/OpenFOAM-7/etc/bashrc \
-    #             && mpirun -np 7 --allow-run-as-root --oversubscribe RANSflareFoam -parallel \
-    #             && cd .. && tar -cvf mpirun_{{inputs.parameters.caseIndex}}.tar SandiaFlame_RANS"
-    #         )
-    #     mpirun.inputs.parameters={"caseIndex":InputParameter()}
-    #     mpirun.inputs.artifacts={"decomposeParFile":InputArtifact(path="/tmp/decomposePar_"+str(caseIndex)+".tar")}
-    #     mpirun.outputs.artifacts={"mpirunFile":OutputArtifact(path="/tmp/mpirun_"+str(caseIndex)+".tar")}
+        mpirun=ShellOPTemplate(
+            image="wangdongchina/pythoncantera:v0.4",
+            command = ["bash"],requests={"cpu": 7},
+            script="cd /tmp && tar -xvf decomposePar_{{inputs.parameters.caseIndex}}.tar && cd SandiaFlame_RANS/ \
+                && source $HOME/OpenFOAM/OpenFOAM-7/etc/bashrc \
+                && mpirun -np {{inputs.parameters.n_proc_mpirun}} --allow-run-as-root --oversubscribe RANSflareFoam -parallel \
+                && cd .. && tar -cvf mpirun_{{inputs.parameters.caseIndex}}.tar SandiaFlame_RANS"
+            )
+        mpirun.inputs.parameters={"caseIndex":InputParameter(),"n_proc_mpirun":InputParameter()}
+        mpirun.inputs.artifacts={"decomposeParFile":InputArtifact(path="/tmp/decomposePar_"+str(caseIndex)+".tar")}
+        mpirun.outputs.artifacts={"mpirunFile":OutputArtifact(path="/tmp/mpirun_"+str(caseIndex)+".tar")}
     
 
-    #     ImportCase=Step(name="loadcase"+str(caseIndex),template=importcase,
-    #                     artifacts={"case_path": artifact_case,
-    #                         "flareTab_path":artifact_flareTab},
-    #                     parameters={"Ubulk":Ubulk[caseIndex],"caseIndex":caseIndex,"n_proc_mpirun":n_proc_mpirun})
-    #     wf.add(ImportCase)
-    #     BlockMesh=Step(name="blockmesh"+str(caseIndex),template=blockmesh,
-    #                     parameters={"caseIndex":str(caseIndex)},
-    #                 artifacts={"SandiaFlame_RANS":ImportCase.outputs.artifacts["zip_path"]})
-    #     wf.add(BlockMesh)
-    #     DecomposePar=Step(name="decomposepar"+str(caseIndex),template=decomposepar,parameters={"caseIndex":str(caseIndex)},
-    #         artifacts={"blockMeshFile":BlockMesh.outputs.artifacts["blockMeshFile"]})
-    #     wf.add(DecomposePar)
-    #     MpiRun=Step(name="mpirun"+str(caseIndex),template=mpirun,parameters={"caseIndex":str(caseIndex)},
-    #         artifacts={"decomposeParFile":DecomposePar.outputs.artifacts["decomposeParFile"]})
-    #     wf.add(MpiRun)
-
+        ImportCase=Step(name="loadcase"+str(caseIndex),template=importcase,when="%s != True" % (parallel_cases),
+                        artifacts={"case_path": artifact_case,
+                            "flareTab_path":artifact_flareTab},
+                        parameters={"Ubulk":Ubulk[caseIndex],"caseIndex":caseIndex,"n_proc_mpirun":n_proc_mpirun})
+        wf.add(ImportCase)
+        BlockMesh=Step(name="blockmesh"+str(caseIndex),template=blockmesh,when="%s != True" % (parallel_cases),
+                        parameters={"caseIndex":str(caseIndex)},
+                    artifacts={"SandiaFlame_RANS":ImportCase.outputs.artifacts["zip_path"]})
+        wf.add(BlockMesh)
+        DecomposePar=Step(name="decomposepar"+str(caseIndex),template=decomposepar,parameters={"caseIndex":str(caseIndex)},
+            artifacts={"blockMeshFile":BlockMesh.outputs.artifacts["blockMeshFile"]},when="%s != True" % (parallel_cases))
+        wf.add(DecomposePar)
+        MpiRun=Step(name="mpirun"+str(caseIndex),template=mpirun,parameters={"caseIndex":str(caseIndex),"n_proc_mpirun":n_proc_mpirun},
+            artifacts={"decomposeParFile":DecomposePar.outputs.artifacts["decomposeParFile"]},when="%s != True" % (parallel_cases))
+        wf.add(MpiRun)
+    
 
     wf.submit()
 
@@ -606,6 +565,7 @@ if __name__ == "__main__":
     # assemble_Flare1 = wf.query_step(key="assemble_Flare")[0]
     # runcase = wf.query_step(key="runcase")[0]
 
+    # wf = Workflow("reused-flare")
     # wf.submit(reuse_step=[load_dict1,cantera_Sim1,interp_Meshgrid1])
     # #----------------------------#
 
@@ -613,15 +573,16 @@ if __name__ == "__main__":
     end=time.time()
     print('Running time: %s Seconds'%(end-start))
 
-    for caseIndex in range(len(Ubulk)):
-        queryStep=wf.query_step(name="runcase")[0]
-        assert(queryStep.phase == "Succeeded")
-        download_artifact(queryStep.outputs.artifacts["zip_path"])
-
-    # for caseIndex in range(len(Ubulk)):
-    #     queryStep=wf.query_step(name="mpirun"+str(caseIndex))[0]
-    #     assert(queryStep.phase == "Succeeded")
-    #     download_artifact(queryStep.outputs.artifacts["mpirunFile"])
+    if (parallel_cases):
+        for caseIndex in range(len(Ubulk)):
+            queryStep=wf.query_step(name="runcase")[0]
+            assert(queryStep.phase == "Succeeded")
+            download_artifact(queryStep.outputs.artifacts["zip_path"])
+    else:
+        for caseIndex in range(len(Ubulk)):
+            queryStep=wf.query_step(name="mpirun"+str(caseIndex))[0]
+            assert(queryStep.phase == "Succeeded")
+            download_artifact(queryStep.outputs.artifacts["mpirunFile"])
 
 
 
