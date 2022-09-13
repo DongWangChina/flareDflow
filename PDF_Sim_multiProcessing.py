@@ -508,7 +508,7 @@ def int_point(z_mean,c_mean,c_var,z_var,co_var,y_int,z_space,c_space,Src_vals,Yi
                                         * ((c_space[j+2]+c_space[j+1])*0.5 - (c_space[j+1]+c_space[j])*0.5)
 
     Q_int[0:n_points_z,0:nScalars] = Q_int[0:n_points_z,0:nScalars]-dPsidc[0:n_points_z,n_points_c-1,0:nScalars] \
-                                        *CDF_C[n_points_c-1]*(c_space[n_points_c-1]-c_space[n_points_c-1])/2.0 \
+                                        *CDF_C[n_points_c-1]*(c_space[n_points_c-1]-c_space[n_points_c-2])/2.0 \
                                     - dPsidc[0:n_points_z,n_points_c,0:nScalars]*CDF_C[n_points_c]*(c_space[1] \
                                         -c_space[0])/2.0 + Psi[0:n_points_z,n_points_c-1,0:nScalars]
 
